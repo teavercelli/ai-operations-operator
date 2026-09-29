@@ -1,0 +1,11 @@
+.env
+.env.*
+.streamlit/secrets.toml
+.venv/
+__pycache__/
+*.py[cod]
+data/operations.db
+data/olist.db
+*.sqlite
+*.sqlite3
+.DS_Store
