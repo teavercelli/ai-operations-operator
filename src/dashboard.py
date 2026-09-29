@@ -132,9 +132,28 @@ def load_order_data() -> pd.DataFrame:
 
 
 def ensure_app_database() -> None:
-    """Build the generated SQLite database on first deploy if it is absent."""
+    """Build or repair the generated SQLite database on first deploy."""
 
-    if not DEFAULT_DATABASE.exists():
+    import sqlite3
+
+    required_tables = {"orders", "customers", "order_items", "order_payments", "order_reviews"}
+    database_ready = False
+    if DEFAULT_DATABASE.exists():
+        try:
+            with sqlite3.connect(DEFAULT_DATABASE) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+            database_ready = required_tables.issubset(tables)
+        except sqlite3.Error:
+            database_ready = False
+
+    if not database_ready:
+        if DEFAULT_DATABASE.exists():
+            DEFAULT_DATABASE.unlink()
         build_database()
 
 
