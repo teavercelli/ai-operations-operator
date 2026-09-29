@@ -1,171 +1,546 @@
 # AI Operations Operator
 
-AI Operations Automation control center built on the Olist Brazilian
-E-Commerce dataset. The product is intentionally narrow: it detects and
-operates one workflow, `DELIVERY_DELAY`, with deterministic facts, bounded AI
-investigation, Python guardrails, conservative automation policy, human review,
-safe simulated actions and an append-only audit trail.
+An AI-powered operations automation system that automatically detects delivery exceptions, investigates them using business data and AI, applies deterministic safety policies, and routes operational actions based on risk.
 
-## Business problem
+### 🚀 Live Demo
 
-An operations team should not need to search thousands of historical orders by
-hand, reconstruct delivery facts, decide how serious a delay is, and remember
-what happened afterwards. The Operator turns that repeatable work into a
-reviewable case workflow while keeping the final authority outside the LLM.
+👉 **[Open the AI Operations Operator](https://ai-operations-operator-j7eld28lxectwdkktmfu6a.streamlit.app/)**
 
-## Final architecture
+---
+
+## Overview
+
+Many operational processes still require employees to manually identify problems, investigate data, decide what to do, take action, and document the result.
+
+The **AI Operations Operator** explores how this workflow can be automated safely with AI.
+
+The system automatically detects delivery-delay exceptions from real e-commerce data, creates operational cases, collects the relevant business facts, uses Gemini to investigate the case, validates the AI output through deterministic Python guardrails, and determines whether the proposed action can be automated or requires human approval.
+
+Every decision, tool call, state transition and action is recorded in an audit trail.
+
+### Core workflow
 
 ```text
-Olist SQLite data
-      │
-      ▼
-Python/SQL detection ──► idempotent Operations Case (OPEN)
-      │
-      ▼
-Bounded runner ──► authorized Python facts tools
-      │
-      ▼
-Gemini decision: severity, action, rationale, confidence, evidence, message
-      │
-      ▼
-Python validation / guardrails
-      │
-      ▼
-Deterministic Automation Policy
-      ├── safe + allowlisted ──► simulated action ──► CLOSED
-      └── otherwise ───────────► human approval
-                                      ├── approve ─► simulated action ─► CLOSED
-                                      └── reject ──► CLOSED, no action
-      │
-      ▼
-operations.db: cases, transitions, tool calls, decisions, policy and audit
+Detect → Investigate → Decide → Validate → Act → Audit
 ```
 
-Gemini never executes SQL, chooses its own authority, or sends email. The
-`contact_customer` action always requires human approval. The public UI always
-uses simulation mode; SMTP is only a prepared, separately configured adapter.
+The goal is not to build another AI chatbot.
 
-## Automatic workflow
+The goal is to build an AI system capable of participating safely in a real operational process.
 
-The scheduler-ready runner is a stateless one-shot process. It can be called by
-cron later without adding scheduler infrastructure:
+---
 
-```bash
-python3 src/runner_cli.py --scan-only
-python3 src/runner_cli.py --max-orders-scanned 5 --max-cases-created 3 \
-  --max-cases-processed 2 --max-gemini-calls 4
+## What it does
+
+Instead of requiring an operations analyst to manually inspect thousands of orders, the Operator can:
+
+1. 🔎 Automatically detect delivery exceptions
+2. 📂 Create an Operations Case
+3. 🛠️ Collect facts through authorized Python and SQL tools
+4. 🤖 Use Gemini to investigate the case
+5. 🧠 Produce severity, evidence, confidence and a recommended action
+6. 🛡️ Validate the AI decision through deterministic Python guardrails
+7. ⚙️ Apply an Automation Policy
+8. 👤 Route higher-risk cases to human approval
+9. ⚡ Execute safe allowlisted actions automatically
+10. 📋 Record the complete process in an audit trail
+
+---
+
+## Project at a glance
+
+| Metric | Value |
+|---|---:|
+| Orders | 99,441 |
+| Order items | 112,650 |
+| Products | 32,951 |
+| Sellers | 3,095 |
+| Customers | 96,096 |
+| Historical delayed deliveries detected | 7,826 |
+| Historical delivery delay rate | 8.1% |
+| Automated tests | 43 |
+| Operational workflow | `DELIVERY_DELAY` |
+
+The project uses the **Olist Brazilian E-Commerce Public Dataset**, containing real historical and anonymized e-commerce transactions.
+
+---
+
+## Business Problem
+
+A traditional operations workflow may look like this:
+
+```text
+Operations employee
+        ↓
+Search orders
+        ↓
+Identify delivery problem
+        ↓
+Collect information
+        ↓
+Investigate the case
+        ↓
+Assess severity
+        ↓
+Decide what to do
+        ↓
+Take action
+        ↓
+Document the outcome
 ```
 
-Every run has independent caps for scanned orders, created cases, processed
-cases and Gemini interaction attempts. Detection is deterministic and
-idempotent. Existing cases for the same order and issue type are skipped.
-`--scan-only` creates cases without calling Gemini and is the safe public-demo
-mode.
+The AI Operations Operator transforms this into:
 
-The older focused commands remain available:
-
-```bash
-python3 src/detection_cli.py --limit 5
-python3 src/orchestrator_cli.py --limit 1
+```text
+Automatic Detection
+        ↓
+Operations Case
+        ↓
+AI Investigation
+        ↓
+Validated Decision
+        ↓
+Automation Policy
+      ↙          ↘
+Auto Action    Human Approval
+      ↘          ↙
+          Action
+            ↓
+           Audit
 ```
 
-## Control Center
+This allows humans to focus on exceptions that actually require judgment rather than manually processing every case.
 
-Start the local app:
+---
 
-```bash
-python3 -m streamlit run src/dashboard.py
+## How the Operator Works
+
+### 1. Automatic Detection
+
+Python and SQL automatically scan the operational database for delivery exceptions.
+
+Detection is deterministic and does not require an LLM.
+
+```text
+Orders
+   ↓
+Python / SQL rules
+   ↓
+Delivery delay detected
+   ↓
+Operations Case created
 ```
 
-The first tab is **AI Operations Control Center**, not a BI dashboard. It
-contains:
+The detection process is idempotent: running it multiple times does not create duplicate cases for the same operational issue.
 
-- operational KPIs for scanned orders, detected issues, OPEN cases, AI-processed
-  cases, auto-resolved cases, human approvals and failures;
-- an Operations Queue with case, order, issue type, severity, confidence,
-  recommended action and status;
-- case detail with order context, Python facts, AI evidence, rationale,
-  customer message, policy decision and full audit trail;
-- APPROVE / REJECT controls and message editing for pending cases;
-- an Activity Feed showing detected → created → investigated → decided →
-  approved/action/closed or failed;
-- secondary BI tabs for overview, delivery risk, order lookup and the copilot.
+### 2. AI Investigation
 
-The UI is demo-safe: external actions are forced to simulation and Gemini is
-opt-in for each bounded run. Missing credentials, quota errors or invalid AI
-output are shown as failure states and never silently converted into success.
-For a simulated `contact_customer`, the UI uses a non-deliverable
-`example.invalid` recipient unless one is explicitly provided; this is only an
-audit/demo value, never a live destination.
+Once a case exists, the AI Operator investigates it.
 
-## Setup and configuration
+Gemini does not receive unrestricted database access.
 
-Use Python 3.11+ and install the pinned project dependencies:
+Instead, it can use authorized Python tools that retrieve specific business facts.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-python3 src/create_database.py
+```text
+Gemini
+   ↓
+Authorized Tool
+   ↓
+Python
+   ↓
+SQL
+   ↓
+Operational Facts
 ```
 
-Gemini is optional for deterministic detection, the dashboard and tests. If it
-is available, configure the key in the shell or deployment secret store only:
+The AI can produce:
 
-```bash
-export GEMINI_API_KEY="your-key"
+- severity
+- recommended action
+- rationale
+- confidence
+- supporting evidence
+- proposed customer message
+
+### 3. Python Guardrails
+
+The LLM does not control the workflow.
+
+Python validates the AI output before any action can occur.
+
+Guardrails verify:
+
+- valid severity
+- valid recommended action
+- confidence range
+- required evidence
+- case state
+- allowed state transitions
+- completeness and consistency of operational facts
+
+Invalid AI output cannot bypass these controls.
+
+### 4. Automation Policy
+
+A separate deterministic policy determines how much authority the AI receives.
+
+```text
+                 AI Decision
+                      ↓
+              Python Guardrails
+                      ↓
+             Automation Policy
+                 ↙         ↘
+          Safe Case       Review Required
+              ↓                ↓
+        AUTO_APPROVED      HUMAN APPROVAL
+              ↓
+            Action
 ```
 
-Never commit `.env`, API keys, SMTP passwords or `data/operations.db`.
+The LLM cannot decide its own level of autonomy.
 
-The conservative demo automation policy defaults to human approval:
+The policy considers:
 
-```bash
-export AI_OPERATOR_AUTO_EXECUTION_ENABLED=false
-export AI_OPERATOR_AUTO_EXECUTION_CONFIDENCE_THRESHOLD=0.95
-export AI_OPERATOR_AUTO_EXECUTION_ALLOWLIST=monitor_only
+- severity
+- confidence
+- action allowlist
+- evidence validity
+- global kill switch
+
+Automation thresholds are configurable and represent demo policies rather than validated production business rules.
+
+### 5. Human-in-the-loop
+
+Higher-risk actions stop before execution.
+
+An operator can inspect:
+
+- order information
+- business facts
+- AI evidence
+- severity
+- confidence
+- rationale
+- recommended action
+- proposed customer message
+- automation-policy decision
+- complete audit history
+
+The operator can then **APPROVE** or **REJECT** the proposed action.
+
+### 6. External Actions
+
+The architecture includes a provider-neutral email adapter for the `contact_customer` action.
+
+This action always requires human approval.
+
+The system supports:
+
+```text
+Simulation / Dry Run
+Live SMTP
 ```
 
-The email adapter supports simulation/dry-run and a provider-neutral SMTP live
-mode. Live mode is deliberately not configured in the demo:
+The public demo always uses simulation mode.
 
-```bash
-export AI_OPERATOR_EMAIL_MODE=simulation
-export AI_OPERATOR_EXTERNAL_ACTIONS_ENABLED=false
+No real customer email is sent from the deployed application.
+
+### 7. Audit Trail
+
+Every important operation is persisted.
+
+Example:
+
+```text
+case_created
+      ↓
+automatic_ai_processing_started
+      ↓
+tool_call_completed
+      ↓
+decision_recorded
+      ↓
+automation_policy_decision
+      ↓
+human_approval_requested
+      ↓
+action_executed
+      ↓
+case_closed
 ```
 
-An eventual authorized SMTP test additionally needs `AI_OPERATOR_EMAIL_MODE=live`,
-`AI_OPERATOR_EXTERNAL_ACTIONS_ENABLED=true`, `AI_OPERATOR_EMAIL_RECIPIENT`,
-`AI_OPERATOR_EMAIL_FROM`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`,
-`SMTP_PASSWORD` and `SMTP_STARTTLS`. Olist has no customer email field, so a
-trusted recipient mapping is a separate prerequisite. No live send is part of
-the public demo.
+This makes the AI system observable and auditable rather than treating the LLM as a black box.
 
-## Evaluation and verification
+---
 
-Run the full deterministic suite:
+## Beyond a Chatbot
+
+This project deliberately separates **AI reasoning from system authority**.
+
+Gemini cannot:
+
+- execute arbitrary SQL
+- approve its own actions
+- bypass workflow states
+- determine its own automation permissions
+- directly send customer emails
+- bypass deterministic guardrails
+
+Instead:
+
+```text
+LLM
+ ↓
+Proposes a decision
+
+Python
+ ↓
+Validates the decision
+
+Automation Policy
+ ↓
+Determines permitted autonomy
+
+Human
+ ↓
+Handles higher-risk exceptions
+```
+
+---
+
+## Architecture
+
+```text
+                     OLIST DATA
+                         │
+                         ▼
+                    SQLite DB
+                         │
+                         ▼
+               Python / SQL Detection
+                         │
+                         ▼
+                 Operations Case
+                         │
+                         ▼
+                   AI Operator
+                         │
+             ┌───────────┴───────────┐
+             │                       │
+      Authorized Tools             Gemini
+             │                       │
+             └───────────┬───────────┘
+                         ▼
+                    AI Decision
+                         │
+                         ▼
+                 Python Guardrails
+                         │
+                         ▼
+                Automation Policy
+                   ↙           ↘
+           AUTO_APPROVED     HUMAN REVIEW
+                   │             │
+                   └──────┬──────┘
+                          ▼
+                        Action
+                          │
+                          ▼
+                      Audit Log
+                          │
+                          ▼
+                        CLOSED
+```
+
+---
+
+## AI Operations Control Center
+
+The Streamlit web application acts as the control layer for the AI Operator.
+
+### 🌐 Live Application
+
+👉 **[Launch the AI Operations Control Center](https://ai-operations-operator-j7eld28lxectwdkktmfu6a.streamlit.app/)**
+
+The Control Center includes:
+
+- operational KPIs
+- Operations Queue
+- case status
+- AI severity and confidence
+- recommended actions
+- evidence and rationale
+- customer-message review
+- APPROVE / REJECT controls
+- automation-policy decisions
+- complete audit trail
+- Operator Activity Feed
+- secondary business intelligence views
+
+The web application is not the automation itself.
+
+It is the interface used to **observe and control the AI automation running behind it**.
+
+---
+
+## Evaluation & Testing
+
+The project includes automated testing for:
+
+- database creation
+- SQL joins
+- operational tools
+- delivery-delay detection
+- duplicate prevention
+- idempotency
+- case-state transitions
+- AI schema validation
+- missing evidence
+- invalid confidence
+- invalid actions
+- LLM failures and timeouts
+- Gemini call limits
+- automation policy
+- kill switches
+- human approval
+- simulated email success and failure
+- audit integrity
+
+Run the deterministic test suite with:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-The tests cover database import, delivery-delay rules, duplicate prevention,
-workflow failures, Gemini call limits, automation policy, fake email success
-and failure, kill switches, human approval and audit integrity. Controlled
-clients are used only for infrastructure tests; they are never presented as
-live Gemini decisions. Live LLM evaluation remains optional and quota-bound:
+Current result:
 
-```bash
-python3 evaluation/llm_evaluation.py
-python3 evaluation/llm_evaluation.py --run-live --limit 3
+```text
+43 tests
+43 passed
 ```
 
-## Dataset limitations
+A separate LLM evaluation suite is available for controlled live testing.
 
-Olist is a real historical e-commerce dataset, not a live production system.
-It contains orders, customers, products, payments, reviews and sellers, but no
-customer email addresses. Delivery-delay detection is therefore a valid
-historical operational demonstration, while customer contact requires a
-separate trusted identity/email source. External actions are simulated by
-default and no production SLA, recipient identity, business threshold or live
-Gemini quota should be inferred from this demo.
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Programming | Python |
+| Database | SQLite |
+| Data querying | SQL |
+| AI | Google Gemini |
+| AI integration | Function Calling |
+| Web application | Streamlit |
+| Workflow orchestration | Python |
+| Safety | Deterministic Guardrails + Automation Policy |
+| Testing | Python unittest |
+| External actions | Email Adapter / SMTP |
+| Deployment | Streamlit Community Cloud |
+
+---
+
+## Project Structure
+
+```text
+ai-operations-operator/
+│
+├── data/
+├── evaluation/
+├── reports/
+│
+├── src/
+│   ├── create_database.py
+│   ├── queries.py
+│   ├── ai_operator.py
+│   ├── delivery_delay_detection.py
+│   ├── delivery_delay_workflow.py
+│   ├── operations_case_store.py
+│   ├── automation_policy.py
+│   ├── automation_runner.py
+│   ├── email_adapter.py
+│   ├── dashboard.py
+│   └── runner_cli.py
+│
+├── tests/
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## Run Locally
+
+Create a virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+Build the SQLite database:
+
+```bash
+python3 src/create_database.py
+```
+
+Start the web application:
+
+```bash
+python3 -m streamlit run src/dashboard.py
+```
+
+---
+
+## Dataset
+
+This project uses the **Olist Brazilian E-Commerce Public Dataset**, containing real historical and anonymized Brazilian e-commerce transactions.
+
+The dataset includes:
+
+- orders
+- customers
+- products
+- sellers
+- payments
+- order items
+- reviews
+- delivery timestamps
+- geographical information
+
+---
+
+## Limitations
+
+This is a portfolio-grade operational automation prototype, not a production deployment.
+
+Important limitations:
+
+- Olist contains historical rather than live operational data
+- customer email addresses are not included in the dataset
+- the public application uses simulated external actions
+- automation thresholds are demonstration policies rather than business-validated production rules
+- live Gemini behavior depends on API availability, quota and latency
+- production deployment would require authentication, monitoring, access controls, live system integrations and organization-specific policies
+
+The architecture was intentionally designed so these components can be replaced or extended without giving the LLM unrestricted control over operational systems.
+
+---
+
+## Future Extensions
+
+The current implementation deliberately focuses on one workflow: `DELIVERY_DELAY`.
+
+The same architecture could later support:
+
+- payment failures
+- order cancellations
+- negative customer reviews
+- seller-performance issues
+- inventory exceptions
+- fulfillment failures
+
+The objective of the current version is not workflow breadth, but demonstrating a complete and controlled AI operations loop end-to-end.
