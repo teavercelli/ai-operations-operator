@@ -12,7 +12,7 @@ import csv
 import re
 import sqlite3
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +29,12 @@ CSV_TABLES = {
     "olist_products_dataset.csv": "products",
     "olist_sellers_dataset.csv": "sellers",
     "product_category_name_translation.csv": "category_translation",
+}
+
+CORE_CSV_TABLES = {
+    filename: table
+    for filename, table in CSV_TABLES.items()
+    if table not in {"geolocation", "category_translation"}
 }
 
 INTEGER_RE = re.compile(r"^[+-]?\d+$")
@@ -126,10 +132,15 @@ def create_indexes(connection: sqlite3.Connection) -> None:
             )
 
 
-def build_database(data_dir: Path = DEFAULT_DATA_DIR, database_path: Path = DEFAULT_DATABASE) -> dict[str, int]:
+def build_database(
+    data_dir: Path = DEFAULT_DATA_DIR,
+    database_path: Path = DEFAULT_DATABASE,
+    csv_tables: Mapping[str, str] | None = None,
+) -> dict[str, int]:
     """Build the SQLite database and return imported row counts by table."""
 
-    missing = [filename for filename in CSV_TABLES if not (data_dir / filename).exists()]
+    tables_to_import = dict(csv_tables or CSV_TABLES)
+    missing = [filename for filename in tables_to_import if not (data_dir / filename).exists()]
     if missing:
         raise FileNotFoundError("Missing CSV files: " + ", ".join(missing))
     if database_path.exists():
@@ -142,7 +153,10 @@ def build_database(data_dir: Path = DEFAULT_DATA_DIR, database_path: Path = DEFA
     connection = sqlite3.connect(database_path)
     try:
         connection.execute("PRAGMA foreign_keys = ON")
-        for filename, table in CSV_TABLES.items():
+        connection.execute("PRAGMA journal_mode = OFF")
+        connection.execute("PRAGMA synchronous = OFF")
+        connection.execute("PRAGMA temp_store = MEMORY")
+        for filename, table in tables_to_import.items():
             counts[table] = import_table(connection, data_dir / filename, table)
         create_indexes(connection)
         connection.commit()

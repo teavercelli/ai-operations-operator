@@ -18,7 +18,7 @@ sys.path.insert(0, str(SRC_DIR))
 from ai_cli import is_fast_question  # noqa: E402
 from ai_operator import ask  # noqa: E402
 from automation_runner import run_automation_once  # noqa: E402
-from create_database import build_database  # noqa: E402
+from create_database import CORE_CSV_TABLES, build_database  # noqa: E402
 from email_adapter import EmailActionConfig  # noqa: E402
 from operator_cli import answer as local_answer  # noqa: E402
 from queries import DEFAULT_DATABASE, get_order  # noqa: E402
@@ -152,9 +152,11 @@ def ensure_app_database() -> None:
             database_ready = False
 
     if not database_ready:
-        if DEFAULT_DATABASE.exists():
-            DEFAULT_DATABASE.unlink()
-        build_database()
+        build_path = DEFAULT_DATABASE.with_name("olist.build.db")
+        if build_path.exists():
+            build_path.unlink()
+        build_database(database_path=build_path, csv_tables=CORE_CSV_TABLES)
+        build_path.replace(DEFAULT_DATABASE)
 
 
 def money(value: float) -> str:
