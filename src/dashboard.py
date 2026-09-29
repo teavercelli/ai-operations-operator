@@ -18,6 +18,7 @@ sys.path.insert(0, str(SRC_DIR))
 from ai_cli import is_fast_question  # noqa: E402
 from ai_operator import ask  # noqa: E402
 from automation_runner import run_automation_once  # noqa: E402
+from create_database import build_database  # noqa: E402
 from email_adapter import EmailActionConfig  # noqa: E402
 from operator_cli import answer as local_answer  # noqa: E402
 from queries import DEFAULT_DATABASE, get_order  # noqa: E402
@@ -128,6 +129,13 @@ def load_order_data() -> pd.DataFrame:
         "order_estimated_delivery_date"
     ].notna()
     return frame
+
+
+def ensure_app_database() -> None:
+    """Build the generated SQLite database on first deploy if it is absent."""
+
+    if not DEFAULT_DATABASE.exists():
+        build_database()
 
 
 def money(value: float) -> str:
@@ -578,6 +586,7 @@ def copilot_tab() -> None:
 
 def main() -> None:
     inject_style()
+    ensure_app_database()
     data = load_order_data()
     st.sidebar.markdown("<div class='brand'><div class='brand-mark'>◈</div><div><div class='brand-title'>Olist Ops</div><div class='brand-sub'>Control room</div></div></div>", unsafe_allow_html=True)
     st.sidebar.caption("Local SQLite intelligence layer")
